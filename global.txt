@@ -1,1 +1,4 @@
+# IP Address and CIDR
 52.187.245.220
+
+# Domain and FQDN
