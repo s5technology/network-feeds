@@ -3,3 +3,5 @@
 
 ### Domains and FQDNs ###
 tools.pingdom.com
+*.caspio.com
+*.marsello.io
