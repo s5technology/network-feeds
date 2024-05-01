@@ -1,5 +1,5 @@
 ### IP and CIDR ###
-52.187.245.220
+
 
 ### Domains and FQDNs ###
 tools.pingdom.com
