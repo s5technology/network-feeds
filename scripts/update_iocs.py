@@ -18,6 +18,38 @@ OUTPUT_FILE = ROOT / "global.txt"
 
 DOMAIN_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})+$")
 
+# RFC1918 private space plus other non-routable / reserved ranges
+# to exclude from the IP list (loopback, link-local, multicast, etc.)
+NON_ROUTABLE_NETWORKS = [
+    ipaddress.ip_network("0.0.0.0/8"),          # "this" network
+    ipaddress.ip_network("10.0.0.0/8"),         # RFC1918 private
+    ipaddress.ip_network("100.64.0.0/10"),      # CGNAT (RFC6598)
+    ipaddress.ip_network("127.0.0.0/8"),        # loopback
+    ipaddress.ip_network("169.254.0.0/16"),     # link-local
+    ipaddress.ip_network("172.16.0.0/12"),      # RFC1918 private
+    ipaddress.ip_network("192.0.0.0/24"),       # IETF protocol assignments
+    ipaddress.ip_network("192.0.2.0/24"),       # TEST-NET-1 (documentation)
+    ipaddress.ip_network("192.88.99.0/24"),     # 6to4 relay anycast
+    ipaddress.ip_network("192.168.0.0/16"),     # RFC1918 private
+    ipaddress.ip_network("198.18.0.0/15"),      # benchmarking
+    ipaddress.ip_network("198.51.100.0/24"),    # TEST-NET-2 (documentation)
+    ipaddress.ip_network("203.0.113.0/24"),     # TEST-NET-3 (documentation)
+    ipaddress.ip_network("224.0.0.0/4"),        # multicast
+    ipaddress.ip_network("240.0.0.0/4"),        # reserved for future use
+    ipaddress.ip_network("255.255.255.255/32"), # limited broadcast
+    ipaddress.ip_network("::1/128"),            # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),           # IPv6 unique local
+    ipaddress.ip_network("fe80::/10"),          # IPv6 link-local
+]
+
+
+def is_non_routable(value: str) -> bool:
+    try:
+        net = ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return False
+    return any(net.overlaps(reserved) for reserved in NON_ROUTABLE_NETWORKS)
+
 
 def fetch(url: str, timeout: int = 30) -> list[str]:
     try:
@@ -77,14 +109,38 @@ def main():
     ip_entries = build_list(sources.get("ip_sources", []), is_valid_ip_or_cidr, "IP")
     domain_entries = build_list(sources.get("domain_sources", []), is_valid_domain, "domain")
 
-    # Combine into a single sorted, deduped list for global.txt
-    combined = sorted(set(ip_entries) | set(domain_entries))
+    before_count = len(ip_entries)
+    ip_entries = [ip for ip in ip_entries if not is_non_routable(ip)]
+    excluded_count = before_count - len(ip_entries)
+    if excluded_count:
+        print(f"Excluded {excluded_count} non-routable/reserved address entries")
+
+    ip_entries = sorted(
+        set(ip_entries),
+        key=lambda x: (ipaddress.ip_network(x, strict=False).version, ipaddress.ip_network(x, strict=False))
+    )
+    domain_entries = sorted(set(domain_entries))
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     with open(OUTPUT_FILE, "w") as f:
-        for entry in combined:
+        f.write(f"# Auto-generated {ts} — do not edit by hand\n")
+        f.write("#\n")
+        f.write("# ==============================\n")
+        f.write("# IP Addresses / CIDR Ranges\n")
+        f.write(f"# Count: {len(ip_entries)} (non-routable/reserved ranges excluded)\n")
+        f.write("# ==============================\n")
+        for entry in ip_entries:
+            f.write(entry + "\n")
+        f.write("#\n")
+        f.write("# ==============================\n")
+        f.write("# Domains\n")
+        f.write(f"# Count: {len(domain_entries)}\n")
+        f.write("# ==============================\n")
+        for entry in domain_entries:
             f.write(entry + "\n")
 
-    print(f"\nWrote {len(combined)} total entries to {OUTPUT_FILE}")
+    print(f"\nWrote {len(ip_entries) + len(domain_entries)} total entries to {OUTPUT_FILE}")
     print(f"  IPs: {len(ip_entries)} | Domains: {len(domain_entries)}")
 
 
