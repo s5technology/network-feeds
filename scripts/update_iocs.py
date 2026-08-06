@@ -15,6 +15,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES_FILE = ROOT / "sources.yml"
 OUTPUT_FILE = ROOT / "global.txt"
+MANUAL_FILE = ROOT / "manual_iocs.txt"
 
 DOMAIN_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})+$")
 
@@ -84,6 +85,26 @@ def load_sources():
         return yaml.safe_load(f)
 
 
+def load_manual_entries():
+    """Read manual_iocs.txt (one IP/CIDR or domain per line, '#' comments
+    and blank lines ignored). Returns (manual_ips, manual_domains)."""
+    if not MANUAL_FILE.exists():
+        return [], []
+    manual_ips, manual_domains = [], []
+    with open(MANUAL_FILE) as f:
+        for raw_line in f:
+            line = raw_line.split("#")[0].strip()
+            if not line:
+                continue
+            if is_valid_ip_or_cidr(line):
+                manual_ips.append(line)
+            elif is_valid_domain(line):
+                manual_domains.append(line)
+            else:
+                print(f"  ! skipping unrecognized manual entry: {line!r}", file=sys.stderr)
+    return manual_ips, manual_domains
+
+
 def build_list(sources, validator, label):
     seen = set()
     ordered = []
@@ -92,7 +113,10 @@ def build_list(sources, validator, label):
         raw_lines = fetch(src["url"])
         added = 0
         for line in raw_lines:
-            token = line.split(",")[0].split()[0].strip()
+            # Handle '#'-delimited feeds (e.g. AlienVault reputation.data:
+            # IP#Reliability#Risk#Type#Country#City#Coordinates) as well as
+            # comma- or whitespace-delimited feeds. Take the first field.
+            token = line.split("#")[0].split(",")[0].split()[0].strip()
             if not validator(token):
                 continue
             if token not in seen:
@@ -114,6 +138,13 @@ def main():
     excluded_count = before_count - len(ip_entries)
     if excluded_count:
         print(f"Excluded {excluded_count} non-routable/reserved address entries")
+
+    manual_ips, manual_domains = load_manual_entries()
+    if manual_ips or manual_domains:
+        print(f"Loaded {len(manual_ips)} manual IP entries and {len(manual_domains)} manual domain entries")
+        # Manual entries are intentional and bypass the non-routable filter.
+        ip_entries = list(set(ip_entries) | set(manual_ips))
+        domain_entries = list(set(domain_entries) | set(manual_domains))
 
     ip_entries = sorted(
         set(ip_entries),

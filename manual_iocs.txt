@@ -1,0 +1,8 @@
+# Manually curated entries — merged into global.txt on every pipeline run.
+# One IP, CIDR range, or domain per line. '#' starts a comment (inline or
+# full-line). Blank lines are ignored. These bypass the RFC1918/non-routable
+# filter, since anything here was added deliberately.
+#
+# Examples:
+# 203.0.113.55          # known-bad host reported internally, 2026-08-01
+# malicious-example.com # phishing domain seen in incident #1234
