@@ -1,8 +1,4 @@
 # Public, no-auth-required threat intelligence feeds.
-# Note: ACSC does not publish a plain-text public IOC feed. Their indicator
-# sharing is done via the CTIS (Cyber Threat Intelligence Sharing) platform,
-# a TAXII 2.1 server requiring partner onboarding and credentials — not a
-# simple URL fetch. See: https://www.cyber.gov.au (Partnership Portal / CTIS)
 
 ip_sources:
   - name: feodotracker
