@@ -1,0 +1,9 @@
+ip_sources:
+  - name: feodotracker
+    url: https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+  - name: spamhaus_drop
+    url: https://www.spamhaus.org/drop/drop.txt
+
+domain_sources:
+  - name: urlhaus
+    url: https://urlhaus.abuse.ch/downloads/text/

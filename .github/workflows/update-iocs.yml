@@ -1,0 +1,40 @@
+name: Update IOC Feeds
+
+on:
+  schedule:
+    # Every 6 hours
+    - cron: "0 */6 * * *"
+  workflow_dispatch: {}   # allows manual trigger from the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  update-feeds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests pyyaml
+
+      - name: Run IOC update script
+        run: python scripts/update_iocs.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "ioc-bot"
+          git config user.email "ioc-bot@users.noreply.github.com"
+          git add global.txt
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update IOC feeds ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
