@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Fetch IOC feeds, normalize, dedupe, and write a single combined
-IP + domain blocklist to global.txt at the repo root.
+Fetch IOC feeds, normalize, dedupe, and write a combined IP + domain
+blocklist to global.txt at the repo root.
 """
 import re
 import sys
 import ipaddress
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -19,8 +20,8 @@ MANUAL_FILE = ROOT / "manual_iocs.txt"
 
 DOMAIN_RE = re.compile(r"^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63})+$")
 
-# RFC1918 private space plus other non-routable / reserved ranges
-# to exclude from the IP list (loopback, link-local, multicast, etc.)
+# Non-routable / reserved IP ranges to exclude from output
+# (RFC1918 private space, loopback, link-local, multicast, etc.)
 NON_ROUTABLE_NETWORKS = [
     ipaddress.ip_network("0.0.0.0/8"),          # "this" network
     ipaddress.ip_network("10.0.0.0/8"),         # RFC1918 private
@@ -64,10 +65,8 @@ def fetch(url: str, timeout: int = 30) -> list[str]:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith(";"):
             continue
-        # Some feeds (e.g. Check Point's Tor exit-node list) wrap literal
-        # IPv6 addresses in brackets ("[2001:db8::1]"), which
-        # ipaddress.ip_network() rejects outright. Strip them here so those
-        # entries validate instead of being silently dropped.
+        # Strip brackets from bracketed IPv6 literals (e.g. "[2001:db8::1]"),
+        # which some feeds use but ipaddress.ip_network() won't parse.
         line = line.replace("[", "").replace("]", "")
         lines.append(line)
     return lines
@@ -110,33 +109,58 @@ def load_manual_entries():
     return manual_ips, manual_domains
 
 
-def build_list(sources, validator, label):
-    seen = set()
-    ordered = []
+def collect_sources(sources, label):
+    """Fetch each source and classify every entry as an IP/CIDR or a domain
+    based on its content, not on which sources.yml section it came from.
+    Some "domain" feeds list full URLs whose host may be a bare IP, so IPs
+    are checked first and always classified as IPs."""
+    seen_ips, seen_domains = set(), set()
+    ip_entries, domain_entries = [], []
     for src in sources:
         print(f"Fetching {label} source: {src['name']} ({src['url']})")
         raw_lines = fetch(src["url"])
-        added = 0
+        added_ips = added_domains = 0
         for line in raw_lines:
-            # Handle '#'-delimited feeds (e.g. AlienVault reputation.data:
-            # IP#Reliability#Risk#Type#Country#City#Coordinates) as well as
-            # comma- or whitespace-delimited feeds. Take the first field.
+            # Some feeds delimit with '#' (e.g. AlienVault reputation.data)
+            # or commas; take the first field.
             token = line.split("#")[0].split(",")[0].split()[0].strip()
-            if not validator(token):
-                continue
-            if token not in seen:
-                seen.add(token)
-                ordered.append(token)
-                added += 1
-        print(f"  -> {added} new entries")
-    return ordered
+            # Extract the host from full URLs (e.g. URLhaus), which may
+            # itself be a domain or a bare IP.
+            if "://" in token:
+                host = urlparse(token).hostname
+                token = host if host else token
+            if is_valid_ip_or_cidr(token):
+                if token not in seen_ips:
+                    seen_ips.add(token)
+                    ip_entries.append(token)
+                    added_ips += 1
+            elif is_valid_domain(token):
+                if token not in seen_domains:
+                    seen_domains.add(token)
+                    domain_entries.append(token)
+                    added_domains += 1
+        print(f"  -> {added_ips} new IPs, {added_domains} new domains")
+    return ip_entries, domain_entries
 
 
 def main():
     sources = load_sources()
 
-    ip_entries = build_list(sources.get("ip_sources", []), is_valid_ip_or_cidr, "IP")
-    domain_entries = build_list(sources.get("domain_sources", []), is_valid_domain, "domain")
+    ip_from_ip_sources, domain_from_ip_sources = collect_sources(sources.get("ip_sources", []), "IP")
+    ip_from_domain_sources, domain_from_domain_sources = collect_sources(sources.get("domain_sources", []), "domain")
+
+    # Dedupe across both groups in case a feed under one section (e.g. IP
+    # URLs in a "domain" feed) produces entries that belong in the other.
+    ip_entries = list(dict.fromkeys(ip_from_ip_sources + ip_from_domain_sources))
+    domain_entries = list(dict.fromkeys(domain_from_ip_sources + domain_from_domain_sources))
+
+    reclassified = len(ip_from_domain_sources) + len(domain_from_ip_sources)
+    if reclassified:
+        print(
+            f"Reclassified {len(ip_from_domain_sources)} IP(s) found in domain "
+            f"sources and {len(domain_from_ip_sources)} domain(s) found in IP "
+            f"sources."
+        )
 
     before_count = len(ip_entries)
     ip_entries = [ip for ip in ip_entries if not is_non_routable(ip)]
