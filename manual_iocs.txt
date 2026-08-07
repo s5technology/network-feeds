@@ -17,3 +17,15 @@
 68.235.46.235
 87.249.138.34
 92.118.112.181
+### Manual Domain Block List ###
+tools.pingdom.com
+*.caspio.com
+*.marsello.io
+lsj.logentr.com
+okhyg.unsegin.com
+ldn3.p9j32.com
+8ex.unceridefu.com
+live.dot.vu
+canyoumore.com
+makerichtoday.com
+wetpudels.com

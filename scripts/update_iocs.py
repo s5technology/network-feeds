@@ -64,6 +64,11 @@ def fetch(url: str, timeout: int = 30) -> list[str]:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith(";"):
             continue
+        # Some feeds (e.g. Check Point's Tor exit-node list) wrap literal
+        # IPv6 addresses in brackets ("[2001:db8::1]"), which
+        # ipaddress.ip_network() rejects outright. Strip them here so those
+        # entries validate instead of being silently dropped.
+        line = line.replace("[", "").replace("]", "")
         lines.append(line)
     return lines
 

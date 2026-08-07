@@ -17,6 +17,8 @@ ip_sources:
     url: https://threatfox.abuse.ch/downloads/ipblocklist_recommended.txt
   - name: alienvault_reputation
     url: http://reputation.alienvault.com/reputation.data
+  - name: checkpoint_tor_exit_nodes
+    url: https://secureupdates.checkpoint.com/IP-list/TOR.txt
 
 domain_sources:
   - name: urlhaus
